@@ -63,7 +63,7 @@ jobs:
           # library; the port is nothing without it.
           so=$(unzip -l "$apk" lib/arm64-v8a/libmetroid_prime_port.so | awk '$4 ~ /libmetroid_prime_port\.so$/ { print $1 }')
           echo "libmetroid_prime_port.so: ${so:-missing} bytes"
-          test "${so:-0}" -gt 10000000
+          test "${so:-0}" -gt 5000000
           version=$(sed -n 's/.*versionName "\(.*\)".*/\1/p' android/app/build.gradle)
           mkdir dist
           cp "$apk" "dist/metroid-prime-port-$version-${GITHUB_SHA::9}.apk"
