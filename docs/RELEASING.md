@@ -159,7 +159,11 @@ version Flatpak reports; `tools/make_flatpak.sh` stops if the two differ.
      drop CI's `user/` folder (log, `dawn_cache.db`, `pipeline_cache.db`), and zip
      the rest as `metroid-prime-port-X-windows-x86_64.zip`. The same run's
      `metroid_prime_port-windows-arm64` artifact becomes
-     `metroid-prime-port-X-windows-arm64.zip` the same way.
+     `metroid-prime-port-X-windows-arm64.zip` the same way. The x64 job also
+     uploads `metroid-prime-port-windows-x64-setup`, an Inno Setup installer of
+     the same files (`packaging/windows/metroid_prime_port.iss`: per user, no
+     administrator rights, the uninstaller keeps `user/`), named from
+     `git describe`; ship it as is.
    - macOS: run `macos.yml`, download its artifact and zip `Metroid Prime Port.app`
      and `licenses/` as `metroid-prime-port-X-macos-arm64.zip`.
    - Flatpak: `tools/make_flatpak.sh` (committed `port` branch), shipped as
@@ -184,7 +188,7 @@ version Flatpak reports; `tools/make_flatpak.sh` stops if the two differ.
 | Linux | `cmake -S . -B build/port-gcc` | executable | works; tests green. `cmake --install` also produces a complete tree, verified by running it |
 | Linux | `.github/workflows/linux-release.yml` | AppImage + tarball, x86_64 and aarch64 | manual trigger; builds on AlmaLinux 9 and runs `tools/make_appimage.sh`. Use these for releases, not a desktop build. aarch64 builds natively on `ubuntu-24.04-arm`, never run on real arm64 Linux hardware |
 | Linux | `tools/make_flatpak.sh` | Flatpak | manifest installs a working tree and collects notices; builds (`tools/make_flatpak.sh` writes `build/flatpak/MetroidPrimePort.flatpak`). The app id is `io.github.odrannnn.metroidprimeport`, with AppStream metainfo shipped |
-| Windows | `.github/workflows/windows.yml` | zipped `dist/`, x64 and arm64 | weekly (Mondays) and manual trigger; green when run, artifact uploaded, packaged startup checked. arm64 builds natively on `windows-11-arm` with vcpkg's OpenSSL, never run on a real Windows on Arm machine |
+| Windows | `.github/workflows/windows.yml` | zipped `dist/`, x64 and arm64; x64 Inno Setup installer | weekly (Mondays) and manual trigger; green when run, artifact uploaded, packaged startup checked. arm64 builds natively on `windows-11-arm` with vcpkg's OpenSSL, never run on a real Windows on Arm machine |
 | macOS | `.github/workflows/macos.yml` | ad-hoc signed `.app` (arm64) + `licenses/` | experimental; weekly and manual trigger; builds, tests and packaged startup checked in CI, never run on a real Mac |
 | Android | `tools/android_apk.sh :app:assembleRelease` | APK | builds, signed with this project's own key; runs on-device (POCO F8 Ultra, 60 FPS), touch/Continue-load still unverified |
 
