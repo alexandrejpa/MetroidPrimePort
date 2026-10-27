@@ -226,3 +226,72 @@ jobs:
         with:
           name: metroid_prime_port-windows${{ matrix.suffix }}
           path: dist
+
+      # An Inno Setup installer of the same dist/, x64 only: per user, no
+      # administrator rights, so the user/ folder beside the executable stays
+      # writable. The version comes from git describe; the checkout is shallow
+      # and tagless, so fetch the history (commits only) and tags first.
+      - name: Build installer
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          git fetch --quiet --unshallow --tags --filter=tree:0 origin
+          $describe = git describe --tags --always --dirty
+          if ($LASTEXITCODE -ne 0 -or -not $describe) { $describe = "0.0.0-g$($env:GITHUB_SHA.Substring(0, 9))" }
+          $version = $describe -replace '^v', ''
+          $info = '0.0.0.0'
+          if ($version -match '^(\d+)\.(\d+)\.(\d+)(?:-(\d+)-g)?') {
+            $commits = if ($Matches[4]) { [Math]::Min([int]$Matches[4], 65535) } else { 0 }
+            $info = "$($Matches[1]).$($Matches[2]).$($Matches[3]).$commits"
+          }
+          "Installer version $version ($info)"
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw 'Could not install Inno Setup' }
+            $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          & $iscc /Qp "/DAppVersion=$version" "/DVersionInfo=$info" "/DSourceDir=$env:GITHUB_WORKSPACE\dist" "/DOutputDir=$env:GITHUB_WORKSPACE\installer" packaging\windows\metroid_prime_port.iss
+          if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
+          Get-ChildItem installer
+
+      # Install it silently where a player would, start the game from there
+      # with the system directories only, and uninstall it again: a save left
+      # in user/ must survive.
+      - name: Check installer
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem installer/*-setup.exe | Select-Object -First 1
+          $dir = "$env:LOCALAPPDATA\Programs\Metroid Prime Port"
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=desktopicon', '/LOG=install.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content install.log; throw "Installer exited with $($p.ExitCode)" }
+          foreach ($f in 'metroid_prime_port.exe', 'webgpu_dawn.dll', 'ffmpeg.exe', 'README.md', 'licenses') {
+            if (-not (Test-Path "$dir\$f")) { throw "Not installed: $f" }
+          }
+          if (Test-Path "$dir\user\metroid_prime_port.log") { throw "CI's user/ folder was packaged" }
+          if (-not (Test-Path "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Metroid Prime Port\Metroid Prime Port.lnk")) { throw 'No Start menu shortcut' }
+          $saved = $env:PATH
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          $env:MP_NO_DISC_DIALOG = "1"
+          $game = Start-Process -FilePath "$dir\metroid_prime_port.exe" -WorkingDirectory $dir -Wait -PassThru -RedirectStandardError ./installed-startup-error.log
+          $env:PATH = $saved
+          if ($game.ExitCode -ne 1) { throw "Unexpected exit code: $($game.ExitCode)" }
+          if (-not (Select-String -Path ./installed-startup-error.log -Pattern 'no disc image given')) { throw 'Installed executable did not reach main' }
+          if (-not (Test-Path "$dir\user")) { throw 'The installed game did not write its user/ folder beside itself' }
+          New-Item -ItemType Directory -Force -Path "$dir\user\GM8E\Card A" | Out-Null
+          Set-Content -Path "$dir\user\GM8E\Card A\save-sentinel" -Value 'keep me'
+          $p = Start-Process -FilePath "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Uninstaller exited with $($p.ExitCode)" }
+          # The uninstaller hands off to a copy of itself in %TEMP% and returns.
+          for ($i = 0; $i -lt 60 -and (Test-Path "$dir\metroid_prime_port.exe"); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path "$dir\metroid_prime_port.exe") { throw 'Uninstall left the executable' }
+          if (-not (Test-Path "$dir\user\GM8E\Card A\save-sentinel")) { throw 'Uninstall removed user/' }
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: matrix.arch == 'x64'
+        with:
+          name: metroid-prime-port-windows-x64-setup
+          path: installer/*-setup.exe
+          # Already LZMA-compressed.
+          compression-level: 0
