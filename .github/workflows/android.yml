@@ -58,7 +58,12 @@ jobs:
           apk=android/app/build/outputs/apk/release/app-release.apk
           digest=$("$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
           echo "signer: $digest"
-          test "$digest" = 87ea78ebb35f3756eeb341593df49d99cb59db129bf73ddfaa04c1f8213e2b16
+          test "$digest" = 4c4a7721ee93f4f452e5d7ee1a325357ec43c06898f96117afd795d983bd0f32
+          # A green Gradle run can package an APK without the game's native
+          # library; the port is nothing without it.
+          so=$(unzip -l "$apk" lib/arm64-v8a/libmetroid_prime_port.so | awk '$4 ~ /libmetroid_prime_port\.so$/ { print $1 }')
+          echo "libmetroid_prime_port.so: ${so:-missing} bytes"
+          test "${so:-0}" -gt 10000000
           version=$(sed -n 's/.*versionName "\(.*\)".*/\1/p' android/app/build.gradle)
           mkdir dist
           cp "$apk" "dist/metroid-prime-port-$version-${GITHUB_SHA::9}.apk"
